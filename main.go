@@ -80,7 +80,7 @@ func main() {
 
 		// Initialize Prometheus metrics
 		var emptyMap map[string]string
-		commonLabels := []string{"type", "topic", "paused", "channel"}
+		commonLabels := []string{"type", "topic", "channel"}
 		buildInfoMetric = createGaugeVector("nsqd_prometheus_exporter_build_info", "", "",
 			"nsqd-prometheus-exporter build info", emptyMap, []string{"version"})
 		buildInfoMetric.WithLabelValues(app.Version).Set(1)
@@ -189,9 +189,9 @@ func fetchAndSetStats() {
 			if topic.Paused {
 				paused = "true"
 			}
-			nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, paused, "").
+			nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, "").
 				Set(float64(topic.Depth))
-			nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, paused, "").
+			nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, "").
 				Set(float64(topic.BackendDepth))
 			nsqMetrics[ChannelCountMetric].WithLabelValues("topic", topic.Name, paused).
 				Set(float64(len(topic.Channels)))
@@ -202,21 +202,21 @@ func fetchAndSetStats() {
 				if channel.Paused {
 					paused = "true"
 				}
-				nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.Depth))
-				nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.BackendDepth))
-				nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.InFlightCount))
-				nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.TimeoutCount))
-				nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.RequeueCount))
-				nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.DeferredCount))
-				nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(channel.MessageCount))
-				nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, paused, channel.Name).
+				nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
 					Set(float64(len(channel.Clients)))
 			}
 		}
