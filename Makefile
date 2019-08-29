@@ -25,11 +25,9 @@ clean:
 	rm -rf ./vendor/*/
 	rm -f $(BINARY_NAME)
 
+.PHONY: deps
 deps:
-	# Install or update govend
-	go get -u github.com/govend/govend
-	# Fetch vendored dependencies
-	$(GO_BIN)/govend -v
+	go mod download
 
 .PHONY: fmt
 fmt:

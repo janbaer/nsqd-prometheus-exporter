@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/janbaer/nsq-promotheus-exporter/stats"
 	"github.com/prometheus/client_golang/prometheus" // Prometheus client library
-	logger "github.com/sirupsen/logrus"              // Logging library
-	"gopkg.in/urfave/cli.v1"                         // CLI helper
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	logger "github.com/sirupsen/logrus" // Logging library
+	"github.com/urfave/cli"             // CLI helper
 )
 
 var (
@@ -126,7 +128,7 @@ func main() {
 		go fetchAndSetStats()
 
 		// Start HTTP server
-		http.Handle("/metrics", prometheus.Handler())
+		http.Handle("/metrics", promhttp.Handler())
 		err := http.ListenAndServe(":"+strconv.Itoa(c.GlobalInt("listenPort")), nil)
 		if err != nil {
 			logger.Fatal("Error starting Prometheus metrics server: " + err.Error())
@@ -142,7 +144,7 @@ func main() {
 func fetchAndSetStats() {
 	for {
 		// Fetch stats
-		stats, err := getNsqdStats(nsqdURL)
+		stats, err := stats.GetNsqdStats(nsqdURL)
 		if err != nil {
 			logger.Fatal("Error scraping stats from nsqd: " + err.Error())
 		}
