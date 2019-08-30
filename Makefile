@@ -5,6 +5,8 @@ GO_VERSION := $(shell go version | awk -F ' ' '{print $$3}')
 VERSION := $(shell cat VERSION)
 BUILD_FLAGS := -ldflags "-X main.Version=$(VERSION)"
 BUILD_PLATFORMS := darwin linux windows freebsd
+DOCKER_IMAGE_NAME       ?= janbaer/nsqd-prometheus-exporter
+DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
 default: check fmt deps test build
 
@@ -55,3 +57,9 @@ release:
 		shasum -a256 $(BINARY_NAME)-$(VERSION).$$platform-amd64.$(GO_VERSION).tar.gz | awk -F ' ' '{print $$1}' >> $(BINARY_NAME)-$(VERSION).$$platform-amd64.$(GO_VERSION).tar.gz.sha256; \
 		rm -rf $(BINARY_NAME)-$(VERSION).$$platform-amd64.$(GO_VERSION); cd ..; \
 	done
+
+.PHONY: docker
+docker:
+	@echo ">> building docker image"
+	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
+	@docker tag "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" "$(DOCKER_IMAGE_NAME):$(VERSION)"

@@ -1,13 +1,29 @@
-FROM golang:1.9.1-alpine3.6
+FROM golang:1.12-alpine as build
 
-ADD ./ /go/src/github.com/adamweiner/nsqd-prometheus-exporter
+MAINTAINER  Jan Baer <info@janbaer.de>
 
-RUN apk update && \
-    apk add -U build-base git && \
-    cd /go/src/github.com/adamweiner/nsqd-prometheus-exporter && \
-    GOPATH=/go make && \
-    apk del build-base git
+RUN apk add --no-cache gcc musl-dev ca-certificates git
+
+RUN mkdir /src /src/stats /src/bin
+
+WORKDIR /src
+
+# Copy only go.mod and go.sum and than download the dependencies so that they will be cached
+COPY ./go.mod ./go.sum ./
+RUN go mod download
+
+COPY main.go ./
+COPY stats/stats.go stats/
+
+RUN go build -o bin/nsqd-prometheus-exporter main.go
+
+# ------------------------------------
+FROM alpine:latest
+
+MAINTAINER  Jan Baer <info@janbaer.de>
+
+COPY --from=build /src/bin/nsqd-prometheus-exporter /bin/nsqd-prometheus-exporter
 
 EXPOSE 30000
 
-ENTRYPOINT ["/go/src/github.com/adamweiner/nsqd-prometheus-exporter/nsqd-prometheus-exporter"]
+ENTRYPOINT [ "/bin/nsqd-prometheus-exporter" ]
