@@ -28,7 +28,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-package main
+package stats
 
 import (
 	"encoding/json"
@@ -90,8 +90,8 @@ type client struct {
 	TLS           bool   `json:"tls"`
 }
 
-// getNsqdStats calls nsqd's HTTP API and returns the response.
-func getNsqdStats(nsqdURL string) (*stats, error) {
+// GetNsqdStats calls nsqd's HTTP API and returns the response.
+func GetNsqdStats(nsqdURL string) (*stats, error) {
 	resp, err := http.Get(nsqdURL + "/stats?format=json")
 	if err != nil {
 		return nil, err
