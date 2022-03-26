@@ -19,9 +19,8 @@ var (
 	Version string
 
 	scrapeInterval  int
-	nsqdURL         string
-	knownTopics     []string
-	knownChannels   []string
+	knownTopics     = make(map[string][]string)
+	knownChannels   = make(map[string][]string)
 	buildInfoMetric *prometheus.GaugeVec
 	nsqMetrics      = make(map[string]*prometheus.GaugeVec)
 )
@@ -53,6 +52,21 @@ func main() {
 			EnvVar: "NSQD_URL",
 		},
 		cli.StringFlag{
+			Name:  "nsqdURL1, n1",
+			Value: "",
+			Usage: "URL of nsqd to export stats from",
+		},
+		cli.StringFlag{
+			Name:  "nsqdURL2, n2",
+			Value: "",
+			Usage: "URL of nsqd to export stats from",
+		},
+		cli.StringFlag{
+			Name:  "nsqdURL3, n3",
+			Value: "",
+			Usage: "URL of nsqd to export stats from",
+		},
+		cli.StringFlag{
 			Name:   "listenPort, lp",
 			Value:  "30000",
 			Usage:  "Port on which prometheus will expose metrics",
@@ -60,18 +74,34 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:   "scrapeInterval, s",
-			Value:  "30",
+			Value:  "5",
 			Usage:  "How often (in seconds) nsqd stats should be scraped",
 			EnvVar: "SCRAPE_INTERVAL",
 		},
 	}
 	app.Action = func(c *cli.Context) {
 		// Set and validate configuration
-		nsqdURL = c.GlobalString("nsqdURL")
-		if nsqdURL == "" {
-			logger.Warn("Invalid nsqd URL set, continuing with default (http://localhost:4151)")
-			nsqdURL = "http://localhost:4151"
+		var nsqdURL string
+		var nsqdURLs []string
+
+		// We're supporting either multiple hosts or a single
+		for i := 1; i <= 3; i++ {
+			flag := fmt.Sprintf("nsqdURL%d", i)
+			nsqdURL = c.String(flag)
+			if nsqdURL == "" {
+				break
+			}
+			nsqdURLs = append(nsqdURLs, nsqdURL)
 		}
+		if len(nsqdURLs) == 0 {
+			nsqdURL = c.GlobalString("nsqdURL")
+			if nsqdURL == "" {
+				logger.Warn("Invalid nsqd URL set, continuing with default (http://localhost:4151)")
+				nsqdURL = "http://localhost:4151"
+			}
+			nsqdURLs = append(nsqdURLs, nsqdURL)
+		}
+
 		scrapeInterval = c.GlobalInt("scrapeInterval")
 		if scrapeInterval < 1 {
 			logger.Warn("Invalid scrape interval set, continuing with default (30s)")
@@ -80,7 +110,7 @@ func main() {
 
 		// Initialize Prometheus metrics
 		var emptyMap map[string]string
-		commonLabels := []string{"type", "topic", "channel"}
+		commonLabels := []string{"type", "topic", "channel", "nsqdURL"}
 		buildInfoMetric = createGaugeVector("nsqd_prometheus_exporter_build_info", "", "",
 			"nsqd-prometheus-exporter build info", emptyMap, []string{"version"})
 		buildInfoMetric.WithLabelValues(app.Version).Set(1)
@@ -123,12 +153,15 @@ func main() {
 		// # HELP nsqd_channel_count Number of channels
 		// # TYPE nsqd_channel_count gauge
 		nsqMetrics[ChannelCountMetric] = createGaugeVector(ChannelCountMetric, PrometheusNamespace,
-			"", "Number of channels", emptyMap, commonLabels[:3])
+			"", "Number of channels", emptyMap, commonLabels[:4])
 
-		go fetchAndSetStats()
+		for _, url := range nsqdURLs {
+			go fetchAndSetStats(url)
+		}
 
 		// Start HTTP server
 		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/healthcheck", handleHealthCheck)
 		err := http.ListenAndServe(":"+strconv.Itoa(c.GlobalInt("listenPort")), nil)
 		if err != nil {
 			logger.Fatal("Error starting Prometheus metrics server: " + err.Error())
@@ -141,7 +174,9 @@ func main() {
 // fetchAndSetStats scrapes stats from nsqd and updates all the Prometheus metrics
 // above on the provided interval. If a dead topic or channel is detected, the
 // application exits.
-func fetchAndSetStats() {
+func fetchAndSetStats(nsqdURL string) {
+	logger.Infof("Read metrics from %s\n", nsqdURL)
+
 	for {
 		// Fetch stats
 		stats, err := stats.GetNsqdStats(nsqdURL)
@@ -154,6 +189,7 @@ func fetchAndSetStats() {
 		// multiple channels with the same name on different topics.
 		var detectedChannels []string
 		var detectedTopics []string
+
 		for _, topic := range stats.Topics {
 			detectedTopics = append(detectedTopics, topic.Name)
 			for _, channel := range topic.Channels {
@@ -162,13 +198,13 @@ func fetchAndSetStats() {
 		}
 
 		// Exit if a dead topic or channel is detected
-		if deadTopicOrChannelExists(knownTopics, detectedTopics) {
+		if deadTopicOrChannelExists(knownTopics[nsqdURL], detectedTopics) {
 			logger.Warning("At least one old topic no longer included in nsqd stats - rebuilding metrics")
 			for _, metric := range nsqMetrics {
 				metric.Reset()
 			}
 		}
-		if deadTopicOrChannelExists(knownChannels, detectedChannels) {
+		if deadTopicOrChannelExists(knownChannels[nsqdURL], detectedChannels) {
 			logger.Warning("At least one old channel no longer included in nsqd stats - rebuilding metrics")
 			for _, metric := range nsqMetrics {
 				metric.Reset()
@@ -176,8 +212,8 @@ func fetchAndSetStats() {
 		}
 
 		// Update list of known topics and channels
-		knownTopics = detectedTopics
-		knownChannels = detectedChannels
+		knownTopics[nsqdURL] = detectedTopics
+		knownChannels[nsqdURL] = detectedChannels
 
 		// Update info metric with health, start time, and nsqd version
 		nsqMetrics[InfoMetric].
@@ -189,11 +225,11 @@ func fetchAndSetStats() {
 			if topic.Paused {
 				paused = "true"
 			}
-			nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, "").
+			nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
 				Set(float64(topic.Depth))
-			nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, "").
+			nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
 				Set(float64(topic.BackendDepth))
-			nsqMetrics[ChannelCountMetric].WithLabelValues("topic", topic.Name, paused).
+			nsqMetrics[ChannelCountMetric].WithLabelValues("topic", topic.Name, paused, nsqdURL).
 				Set(float64(len(topic.Channels)))
 
 			// Loop through a topic's channels and set metrics
@@ -202,21 +238,21 @@ func fetchAndSetStats() {
 				if channel.Paused {
 					paused = "true"
 				}
-				nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.Depth))
-				nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.BackendDepth))
-				nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.InFlightCount))
-				nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.TimeoutCount))
-				nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.RequeueCount))
-				nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.DeferredCount))
-				nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(channel.MessageCount))
-				nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, channel.Name).
+				nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
 					Set(float64(len(channel.Clients)))
 			}
 		}
@@ -261,4 +297,15 @@ func createGaugeVector(name string, namespace string, subsystem string, help str
 		logger.Fatal("Failed to register prometheus metric: " + err.Error())
 	}
 	return gaugeVec
+}
+
+func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }

@@ -1,4 +1,4 @@
-FROM golang:1.12-alpine as build
+FROM golang:1.18-alpine as build
 
 MAINTAINER  Jan Baer <info@janbaer.de>
 
@@ -26,4 +26,4 @@ COPY --from=build /src/bin/nsqd-prometheus-exporter /bin/nsqd-prometheus-exporte
 
 EXPOSE 30000
 
-ENTRYPOINT [ "/bin/nsqd-prometheus-exporter" ]
+CMD [ "/bin/nsqd-prometheus-exporter" ]

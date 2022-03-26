@@ -15,13 +15,13 @@ USAGE:
    nsqd-prometheus-exporter [global options] command [command options] [arguments...]
 
 VERSION:
-   0.4.0
+   2.0.0
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --nsqdURL value, -n value         URL of nsqd to export stats from (default: "http://localhost:4151") [$NSQD_URL]
+   --nsqdURL value, -n value         URL of nsqd to export stats from (default: "http://localhost:4151") [$NSQD_URL] Alternatively you can also specify multiple urls with using nsqdURL1, nsqdURL2, nsqdURL3
    --listenPort value, --lp value    Port on which prometheus will expose metrics (default: "30000") [$LISTEN_PORT]
    --scrapeInterval value, -s value  How often (in seconds) nsqd stats should be scraped (default: "30") [$SCRAPE_INTERVAL]
    --help, -h                        show help
