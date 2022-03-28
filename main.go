@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/janbaer/nsq-promotheus-exporter/stats"
@@ -23,6 +24,8 @@ var (
 	knownChannels   = make(map[string][]string)
 	buildInfoMetric *prometheus.GaugeVec
 	nsqMetrics      = make(map[string]*prometheus.GaugeVec)
+
+	mutex sync.Mutex
 )
 
 const (
@@ -156,7 +159,7 @@ func main() {
 			"", "Number of channels", emptyMap, commonLabels[:4])
 
 		for _, url := range nsqdURLs {
-			go fetchAndSetStats(url)
+			go fetchAndSetStats(url, &mutex)
 		}
 
 		// Start HTTP server
@@ -174,7 +177,7 @@ func main() {
 // fetchAndSetStats scrapes stats from nsqd and updates all the Prometheus metrics
 // above on the provided interval. If a dead topic or channel is detected, the
 // application exits.
-func fetchAndSetStats(nsqdURL string) {
+func fetchAndSetStats(nsqdURL string, m *sync.Mutex) {
 	logger.Infof("Read metrics from %s\n", nsqdURL)
 
 	for {
@@ -197,23 +200,9 @@ func fetchAndSetStats(nsqdURL string) {
 			}
 		}
 
-		// Exit if a dead topic or channel is detected
-		if deadTopicOrChannelExists(knownTopics[nsqdURL], detectedTopics) {
-			logger.Warning("At least one old topic no longer included in nsqd stats - rebuilding metrics")
-			for _, metric := range nsqMetrics {
-				metric.Reset()
-			}
-		}
-		if deadTopicOrChannelExists(knownChannels[nsqdURL], detectedChannels) {
-			logger.Warning("At least one old channel no longer included in nsqd stats - rebuilding metrics")
-			for _, metric := range nsqMetrics {
-				metric.Reset()
-			}
-		}
-
-		// Update list of known topics and channels
-		knownTopics[nsqdURL] = detectedTopics
-		knownChannels[nsqdURL] = detectedChannels
+		m.Lock()
+		resetMetricsIfDeadTopicsOrChannelsDetected(nsqdURL, detectedTopics, detectedChannels)
+		m.Unlock()
 
 		// Update info metric with health, start time, and nsqd version
 		nsqMetrics[InfoMetric].
@@ -260,6 +249,25 @@ func fetchAndSetStats(nsqdURL string) {
 		// Scrape every scrapeInterval
 		time.Sleep(time.Duration(scrapeInterval) * time.Second)
 	}
+}
+
+func resetMetricsIfDeadTopicsOrChannelsDetected(nsqdURL string, detectedTopics []string, detectedChannels []string) {
+	if deadTopicOrChannelExists(knownTopics[nsqdURL], detectedTopics) {
+		logger.Warning("At least one old topic no longer included in nsqd stats - rebuilding metrics")
+		for _, metric := range nsqMetrics {
+			metric.Reset()
+		}
+	}
+	if deadTopicOrChannelExists(knownChannels[nsqdURL], detectedChannels) {
+		logger.Warning("At least one old channel no longer included in nsqd stats - rebuilding metrics")
+		for _, metric := range nsqMetrics {
+			metric.Reset()
+		}
+	}
+
+	// Update list of known topics and channels
+	knownTopics[nsqdURL] = detectedTopics
+	knownChannels[nsqdURL] = detectedChannels
 }
 
 // deadTopicOrChannelExists loops through a list of known topic or channel names
