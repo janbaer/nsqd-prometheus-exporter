@@ -15,7 +15,7 @@ USAGE:
    nsqd-prometheus-exporter [global options] command [command options] [arguments...]
 
 VERSION:
-   2.0.0
+   2.0.2
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command

@@ -102,17 +102,6 @@ func GetNsqdStats(nsqdURL string) (*stats, error) {
 		return nil, err
 	}
 
-	// nsq <= 0.3.8 uses statsResponse
-	// if a status code != 0 exists, assume the unmarshal is successful
-	var sr statsResponse
-	if err = json.Unmarshal(body, &sr); err != nil {
-		return nil, err
-	}
-	if sr.StatusCode != 0 {
-		return &sr.Data, nil
-	}
-
-	// nsq 1.x drops statsResponse for just stats
 	var s stats
 	if err = json.Unmarshal(body, &s); err != nil {
 		return nil, err

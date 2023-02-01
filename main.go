@@ -184,65 +184,68 @@ func fetchAndSetStats(nsqdURL string, m *sync.Mutex) {
 		// Fetch stats
 		stats, err := stats.GetNsqdStats(nsqdURL)
 		if err != nil {
-			logger.Fatal("Error scraping stats from nsqd: " + err.Error())
+			// We want to log the error, but no longer kill the app here
+			logger.Error("Error scraping stats from nsqd: " + err.Error())
 		}
 
-		// Build list of detected topics and channels - the list of channels is built
-		// including the topic name that each belongs to, as it is possible to have
-		// multiple channels with the same name on different topics.
-		var detectedChannels []string
-		var detectedTopics []string
+		if stats != nil {
+			// Build list of detected topics and channels - the list of channels is built
+			// including the topic name that each belongs to, as it is possible to have
+			// multiple channels with the same name on different topics.
+			var detectedChannels []string
+			var detectedTopics []string
 
-		for _, topic := range stats.Topics {
-			detectedTopics = append(detectedTopics, topic.Name)
-			for _, channel := range topic.Channels {
-				detectedChannels = append(detectedChannels, topic.Name+channel.Name)
+			for _, topic := range stats.Topics {
+				detectedTopics = append(detectedTopics, topic.Name)
+				for _, channel := range topic.Channels {
+					detectedChannels = append(detectedChannels, topic.Name+channel.Name)
+				}
 			}
-		}
 
-		m.Lock()
-		resetMetricsIfDeadTopicsOrChannelsDetected(nsqdURL, detectedTopics, detectedChannels)
-		m.Unlock()
+			m.Lock()
+			resetMetricsIfDeadTopicsOrChannelsDetected(nsqdURL, detectedTopics, detectedChannels)
+			m.Unlock()
 
-		// Update info metric with health, start time, and nsqd version
-		nsqMetrics[InfoMetric].
-			WithLabelValues(stats.Health, fmt.Sprintf("%d", stats.StartTime), stats.Version).Set(1)
+			// Update info metric with health, start time, and nsqd version
+			nsqMetrics[InfoMetric].
+				WithLabelValues(stats.Health, fmt.Sprintf("%d", stats.StartTime), stats.Version).Set(1)
 
-		// Loop through topics and set metrics
-		for _, topic := range stats.Topics {
-			paused := "false"
-			if topic.Paused {
-				paused = "true"
-			}
-			nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
-				Set(float64(topic.Depth))
-			nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
-				Set(float64(topic.BackendDepth))
-			nsqMetrics[ChannelCountMetric].WithLabelValues("topic", topic.Name, paused, nsqdURL).
-				Set(float64(len(topic.Channels)))
-
-			// Loop through a topic's channels and set metrics
-			for _, channel := range topic.Channels {
-				paused = "false"
-				if channel.Paused {
+			// Loop through topics and set metrics
+			for _, topic := range stats.Topics {
+				paused := "false"
+				if topic.Paused {
 					paused = "true"
 				}
-				nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.Depth))
-				nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.BackendDepth))
-				nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.InFlightCount))
-				nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.TimeoutCount))
-				nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.RequeueCount))
-				nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.DeferredCount))
-				nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(channel.MessageCount))
-				nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
-					Set(float64(len(channel.Clients)))
+				nsqMetrics[DepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
+					Set(float64(topic.Depth))
+				nsqMetrics[BackendDepthMetric].WithLabelValues("topic", topic.Name, "", nsqdURL).
+					Set(float64(topic.BackendDepth))
+				nsqMetrics[ChannelCountMetric].WithLabelValues("topic", topic.Name, paused, nsqdURL).
+					Set(float64(len(topic.Channels)))
+
+				// Loop through a topic's channels and set metrics
+				for _, channel := range topic.Channels {
+					paused = "false"
+					if channel.Paused {
+						paused = "true"
+					}
+					nsqMetrics[DepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.Depth))
+					nsqMetrics[BackendDepthMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.BackendDepth))
+					nsqMetrics[InFlightMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.InFlightCount))
+					nsqMetrics[TimeoutCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.TimeoutCount))
+					nsqMetrics[RequeueCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.RequeueCount))
+					nsqMetrics[DeferredCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.DeferredCount))
+					nsqMetrics[MessageCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(channel.MessageCount))
+					nsqMetrics[ClientCountMetric].WithLabelValues("channel", topic.Name, channel.Name, nsqdURL).
+						Set(float64(len(channel.Clients)))
+				}
 			}
 		}
 
