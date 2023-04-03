@@ -120,7 +120,7 @@ func main() {
 		// # HELP nsqd_info nsqd info
 		// # TYPE nsqd_info gauge
 		nsqMetrics[InfoMetric] = createGaugeVector(InfoMetric, PrometheusNamespace,
-			"", "nsqd info", emptyMap, []string{"health", "start_time", "version"})
+			"", "nsqd info", emptyMap, []string{"health", "nsqURL", "version"})
 		// # HELP nsqd_depth Queue depth
 		// # TYPE nsqd_depth gauge
 		nsqMetrics[DepthMetric] = createGaugeVector(DepthMetric, PrometheusNamespace,
@@ -206,9 +206,8 @@ func fetchAndSetStats(nsqdURL string, m *sync.Mutex) {
 			resetMetricsIfDeadTopicsOrChannelsDetected(nsqdURL, detectedTopics, detectedChannels)
 			m.Unlock()
 
-			// Update info metric with health, start time, and nsqd version
-			nsqMetrics[InfoMetric].
-				WithLabelValues(stats.Health, fmt.Sprintf("%d", stats.StartTime), stats.Version).Set(1)
+			// Update info metric with health, nsqdURL, and nsqd version
+			nsqMetrics[InfoMetric].WithLabelValues(stats.Health, nsqdURL, stats.Version).Set(1)
 
 			// Loop through topics and set metrics
 			for _, topic := range stats.Topics {
